@@ -106,8 +106,6 @@
 .disc-back { font-size: 16px; color: var(--c-muted); text-decoration: none; }
 .disc-back:hover { color: var(--c-text); }
 
-/* Pointer-lock overlay removed — click-to-play is gone */
-
 /* ════════════════════════════════════════════════════════════
    CROSSHAIR
    ════════════════════════════════════════════════════════════ */
@@ -439,21 +437,28 @@
 .sp-reset-btn:hover { color: var(--c-danger); border-color: var(--c-danger); }
 
 /* ════════════════════════════════════════════════════════════
-   CHAT
+   CHAT  — centred above the hotbar, not bottom-right
    ════════════════════════════════════════════════════════════ */
 
 .chat-panel {
   position: absolute;
-  bottom: 14px; right: 14px;
+  /* sit above the hotbar */
+  bottom: 112px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 20;
-  width: clamp(240px, 30vw, 340px);
+  width: clamp(260px, 38vw, 400px);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  pointer-events: none;
 }
 
+/* Allow pointer events only on the form row */
+.chat-form { pointer-events: all; }
+
 .chat-messages {
-  max-height: 180px;
+  max-height: 160px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -484,7 +489,7 @@
 .chat-form { display: flex; gap: 6px; }
 .chat-input {
   flex: 1;
-  background: rgba(13,13,26,.85);
+  background: rgba(13,13,26,.90);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   color: var(--c-text);
@@ -492,6 +497,7 @@
   padding: 8px 10px;
   outline: none;
   transition: border-color .2s;
+  font-family: var(--font-vt);
 }
 .chat-input:focus            { border-color: var(--c-accent); }
 .chat-input:disabled         { opacity: 0; pointer-events: none; }
@@ -520,7 +526,7 @@
 @media (max-width: 600px) {
   .hud-tr            { font-size: 14px; }
   .hud-tl            { padding: 6px 9px; }
-  .chat-panel        { width: calc(100vw - 20px); right: 10px; bottom: 10px; }
+  .chat-panel        { width: calc(100vw - 28px); bottom: 100px; }
   .controls-hint     { display: none; }
   .compass-bar-wrap  { width: 340px; }
   #settingsPanel     { max-height: 96dvh; }
@@ -875,19 +881,9 @@
     inset 0 0 8px rgba(0, 245, 196, .06);
   transform: translateY(-3px);
 }
-
-.hotbar-slot.active .hotbar-slot-key {
-  color: var(--c-accent);
-}
-
-.hotbar-slot.active .hotbar-slot-canvas {
-  filter: brightness(1.15) saturate(1.2) drop-shadow(0 0 5px rgba(0,245,196,.5));
-  transform: scale(1.06);
-}
-
-.hotbar-slot.active .hotbar-slot-label {
-  color: var(--c-accent);
-}
+.hotbar-slot.active .hotbar-slot-key    { color: var(--c-accent); }
+.hotbar-slot.active .hotbar-slot-canvas { filter: brightness(1.15) saturate(1.2) drop-shadow(0 0 5px rgba(0,245,196,.5)); transform: scale(1.06); }
+.hotbar-slot.active .hotbar-slot-label  { color: var(--c-accent); }
 
 /* ── Mobile: slightly smaller ── */
 @media (max-width: 540px) {
@@ -897,43 +893,200 @@
 }
 
 /* ════════════════════════════════════════════════════════════
-   HELD ITEM  (first-person 3D view, bottom-right)
+   HELD ITEM  — FIXED: pulled inward, softer perspective
    ════════════════════════════════════════════════════════════ */
 
 .held-item-wrap {
   position: absolute;
-  bottom: 90px;
-  right: 20px;
-  width: 280px;
-  height: 240px;
+  /* pulled up higher so hotbar doesn't overlap and clearly visible */
+  bottom: 96px;
+  right: 36px;                      /* was 20px — more inward */
+  width: 240px;                     /* was 280 — slightly smaller */
+  height: 200px;                    /* was 240 */
   z-index: 8;
   pointer-events: none;
   user-select: none;
-  /* Tilt as if held in the player's right hand */
-  transform: perspective(700px) rotateX(10deg) rotateY(-20deg) rotate(-4deg) translateX(10px);
+  /* Softer tilt — was rotateY(-20deg) which pushed it off-screen */
+  transform: perspective(600px) rotateX(6deg) rotateY(-12deg) rotate(-2deg);
   transform-origin: bottom right;
-  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.75));
+  filter: drop-shadow(0 16px 32px rgba(0, 0, 0, 0.70));
   transition: opacity .15s ease;
 }
 
 #heldItemCanvas {
   display: block;
-  width: 280px;
-  height: 240px;
+  width: 240px;
+  height: 200px;
   image-rendering: pixelated;
 }
 
 /* Quick lower-and-raise on slot switch */
 @keyframes heldSwitch {
-  0%   { opacity: 0;   transform: perspective(700px) rotateX(10deg) rotateY(-20deg) rotate(-4deg) translateX(10px) translateY(60px); }
-  100% { opacity: 1;   transform: perspective(700px) rotateX(10deg) rotateY(-20deg) rotate(-4deg) translateX(10px) translateY(0);   }
+  0%   { opacity: 0; transform: perspective(600px) rotateX(6deg) rotateY(-12deg) rotate(-2deg) translateY(50px); }
+  100% { opacity: 1; transform: perspective(600px) rotateX(6deg) rotateY(-12deg) rotate(-2deg) translateY(0); }
 }
 .held-item-wrap.switching {
   animation: heldSwitch 0.20s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+/* Digging animation — quick swing down and back */
+@keyframes heldDig {
+  0%   { transform: perspective(600px) rotateX(6deg)  rotateY(-12deg) rotate(-2deg); }
+  40%  { transform: perspective(600px) rotateX(40deg) rotateY(-8deg)  rotate(8deg) translateY(30px); }
+  70%  { transform: perspective(600px) rotateX(20deg) rotateY(-14deg) rotate(2deg) translateY(10px); }
+  100% { transform: perspective(600px) rotateX(6deg)  rotateY(-12deg) rotate(-2deg); }
+}
+.held-item-wrap.digging {
+  animation: heldDig 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 /* Mobile: shrink held item */
 @media (max-width: 540px) {
-  .held-item-wrap  { width: 180px; height: 154px; bottom: 80px; right: 8px; }
-  #heldItemCanvas  { width: 180px; height: 154px; }
+  .held-item-wrap  { width: 160px; height: 132px; bottom: 88px; right: 14px; }
+  #heldItemCanvas  { width: 160px; height: 132px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   DETECTOR HUD  — signal meter shown when slot 2 is active
+   ════════════════════════════════════════════════════════════ */
+
+.detector-hud {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  z-index: 12;
+  pointer-events: none;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: rgba(13,13,26,.82);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius);
+  padding: 12px 10px;
+  box-shadow: 0 0 14px rgba(0,245,196,.2), inset 0 0 8px rgba(0,245,196,.04);
+  min-width: 70px;
+  transition: opacity .3s;
+}
+.detector-hud.hidden { display: none; }
+
+.det-label {
+  font-family: var(--font-pixel);
+  font-size: 6px;
+  color: var(--c-accent);
+  letter-spacing: 2px;
+}
+
+/* Vertical bar — fills from bottom */
+.det-bar-wrap {
+  width: 22px;
+  height: 100px;
+  background: rgba(0,245,196,.08);
+  border: 1px solid rgba(0,245,196,.25);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.det-bar {
+  width: 100%;
+  height: 0%;
+  border-radius: 2px;
+  transition: height .3s ease, background-color .3s ease;
+  background: var(--c-accent);
+}
+
+/* Segment lines on bar */
+.det-bar-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to top,
+    transparent 0px,
+    transparent 14px,
+    rgba(13,13,26,.6) 14px,
+    rgba(13,13,26,.6) 16px
+  );
+  pointer-events: none;
+}
+
+.det-value {
+  font-family: var(--font-pixel);
+  font-size: 5px;
+  color: var(--c-accent);
+  letter-spacing: 1px;
+  text-align: center;
+  max-width: 60px;
+  line-height: 1.4;
+}
+
+/* Beep pulse on strong signal */
+@keyframes detPulse {
+  0%,100% { box-shadow: 0 0 14px rgba(0,245,196,.2), inset 0 0 8px rgba(0,245,196,.04); }
+  50%      { box-shadow: 0 0 28px rgba(0,245,196,.55), inset 0 0 14px rgba(0,245,196,.14); }
+}
+.detector-hud.strong { animation: detPulse 0.6s ease-in-out infinite; }
+.detector-hud.strong .det-bar { background: #00ffce; }
+.detector-hud.strong .det-label { color: #00ffce; }
+
+/* ════════════════════════════════════════════════════════════
+   FOUND ITEM NOTIFICATION
+   ════════════════════════════════════════════════════════════ */
+
+.found-notif {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(13,13,26,.92);
+  border: 2px solid var(--c-accent);
+  border-radius: 8px;
+  padding: 20px 32px;
+  box-shadow: 0 0 32px rgba(0,245,196,.35);
+  animation: foundIn .3s cubic-bezier(.22,1,.36,1) both;
+}
+.found-notif.hidden { display: none; }
+
+@keyframes foundIn {
+  from { opacity: 0; transform: translate(-50%,-60%) scale(.85); }
+  to   { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+}
+
+.found-icon { font-size: 42px; }
+.found-label {
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  color: var(--c-accent);
+  letter-spacing: 3px;
+}
+.found-text {
+  font-family: var(--font-vt);
+  font-size: 24px;
+  color: var(--c-text);
+}
+
+/* Dig particle burst placeholder */
+.dig-particles {
+  position: absolute;
+  pointer-events: none;
+  z-index: 11;
+  font-size: 20px;
+  animation: digPart .6s ease-out both;
+  top: 50%; left: 50%;
+}
+@keyframes digPart {
+  from { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%,-200%) scale(0.5); }
 }
