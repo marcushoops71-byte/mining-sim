@@ -1,7 +1,9 @@
-<html lang="en"><head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WalkWorld 3D — Playing</title>
+  <title>WalkWorld 3D</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/game.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -65,7 +67,7 @@
       <div class="hud-avatar" id="hudAvatar"></div>
       <div class="hud-info">
         <span class="hud-name" id="hudName">—</span>
-        <span class="hud-pos" id="hudPos">0, 0, 0</span>
+        <span class="hud-pos"  id="hudPos">0, 0</span>
         <span class="hud-zone" id="hudZone">Plains</span>
       </div>
     </div>
@@ -86,28 +88,42 @@
         <span class="compass-dir" id="compassDir">N</span>
       </div>
       <div class="controls-hint" aria-label="Controls">
-        WASD&nbsp;·&nbsp;Move &nbsp;|&nbsp;
-        Mouse&nbsp;·&nbsp;Look &nbsp;|&nbsp;
-        Space&nbsp;·&nbsp;Jump &nbsp;|&nbsp;
-        T&nbsp;·&nbsp;Chat &nbsp;|&nbsp;
-        M&nbsp;·&nbsp;Map &nbsp;|&nbsp;
-        1/2&nbsp;·&nbsp;Item
+        WASD · Move &nbsp;|&nbsp; Mouse · Look &nbsp;|&nbsp; Space · Jump &nbsp;|&nbsp;
+        T · Chat &nbsp;|&nbsp; M · Map &nbsp;|&nbsp; 1 · Shovel &nbsp;|&nbsp; 2 · Detector
       </div>
       <div class="hud-icon-row">
-        <button id="btnSettings" class="hud-icon-btn" title="Settings (ESC)" aria-label="Open settings">⚙</button>
+        <button id="btnSettings"  class="hud-icon-btn" title="Settings (ESC)"        aria-label="Open settings">⚙</button>
         <button id="btnCharacter" class="hud-icon-btn" title="Character customisation" aria-label="Open character editor">👤</button>
       </div>
     </div>
 
     <!-- ══════════════════════════════════════════════════
-         CLICK-TO-RESUME HINT  (shown when Escape closes the menu)
+         DETECTOR HUD  (right side — visible when slot 2 active)
+         ══════════════════════════════════════════════════ -->
+    <div id="detectorHud" class="detector-hud hidden" aria-hidden="true">
+      <span class="det-label">SIGNAL</span>
+      <div class="det-bar-wrap">
+        <div class="det-bar" id="detBar"></div>
+      </div>
+      <span class="det-value" id="detValue">NO&#10;SIGNAL</span>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         FOUND ITEM NOTIFICATION  (centre screen, auto-hides)
+         ══════════════════════════════════════════════════ -->
+    <div id="foundNotif" class="found-notif hidden" role="status" aria-live="polite">
+      <span class="found-icon">💎</span>
+      <span class="found-label">ITEM FOUND!</span>
+      <span class="found-text">Crystal Gem</span>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════
+         CLICK-TO-RESUME HINT
          ══════════════════════════════════════════════════ -->
     <div id="lockHint" class="lock-hint hidden"></div>
 
     <!-- ══════════════════════════════════════════════════
          PAUSE MENU  (Roblox-style)
-         Main screen: vertical button list
-         Sub-screens: Settings · Avatar (slide in)
          ══════════════════════════════════════════════════ -->
     <div id="pauseMenu" class="pm-overlay hidden" role="dialog" aria-modal="true" aria-label="Pause menu">
 
@@ -135,10 +151,10 @@
 
           <button id="pmResetChar" class="pm-item">
             <span class="pm-item-icon">🔄</span>
-            <span class="pm-item-label">Reset Character</span>
+            <span class="pm-item-label">Reset Position</span>
           </button>
 
-          <button id="pmJoin" class="pm-item pm-item-soon" disabled="">
+          <button id="pmJoin" class="pm-item pm-item-soon" disabled>
             <span class="pm-item-icon">🔗</span>
             <span class="pm-item-label">Join Friend</span>
             <span class="pm-item-badge">SOON</span>
@@ -150,7 +166,7 @@
           </button>
 
         </div>
-      </div><!-- /#pmMain -->
+      </div>
 
       <!-- ── SETTINGS SCREEN ── -->
       <div class="pm-panel pm-sub pm-hidden" id="pmTabSettings" role="tabpanel">
@@ -172,13 +188,13 @@
           <div class="sp-section">
             <p class="sp-section-title">KEY BINDS</p>
             <div class="sp-bind-row"><span class="sp-bind-label">Forward</span><button class="sp-bind-btn" data-bind="forward">W</button></div>
-            <div class="sp-bind-row"><span class="sp-bind-label">Back</span><button class="sp-bind-btn" data-bind="back">S</button></div>
-            <div class="sp-bind-row"><span class="sp-bind-label">Left</span><button class="sp-bind-btn" data-bind="left">A</button></div>
-            <div class="sp-bind-row"><span class="sp-bind-label">Right</span><button class="sp-bind-btn" data-bind="right">D</button></div>
-            <div class="sp-bind-row"><span class="sp-bind-label">Jump</span><button class="sp-bind-btn" data-bind="jump">Space</button></div>
-            <div class="sp-bind-row"><span class="sp-bind-label">Sprint</span><button class="sp-bind-btn" data-bind="sprint">Shift</button></div>
-            <div class="sp-bind-row"><span class="sp-bind-label">Chat</span><button class="sp-bind-btn" data-bind="chat">T</button></div>
-            <div class="sp-bind-row"><span class="sp-bind-label">Map</span><button class="sp-bind-btn" data-bind="map">M</button></div>
+            <div class="sp-bind-row"><span class="sp-bind-label">Back</span>   <button class="sp-bind-btn" data-bind="back">S</button></div>
+            <div class="sp-bind-row"><span class="sp-bind-label">Left</span>   <button class="sp-bind-btn" data-bind="left">A</button></div>
+            <div class="sp-bind-row"><span class="sp-bind-label">Right</span>  <button class="sp-bind-btn" data-bind="right">D</button></div>
+            <div class="sp-bind-row"><span class="sp-bind-label">Jump</span>   <button class="sp-bind-btn" data-bind="jump">Space</button></div>
+            <div class="sp-bind-row"><span class="sp-bind-label">Sprint</span> <button class="sp-bind-btn" data-bind="sprint">Shift</button></div>
+            <div class="sp-bind-row"><span class="sp-bind-label">Chat</span>   <button class="sp-bind-btn" data-bind="chat">T</button></div>
+            <div class="sp-bind-row"><span class="sp-bind-label">Map</span>    <button class="sp-bind-btn" data-bind="map">M</button></div>
           </div>
 
           <div class="sp-reset-row">
@@ -186,7 +202,7 @@
           </div>
 
         </div>
-      </div><!-- /#pmTabSettings -->
+      </div>
 
       <!-- ── AVATAR SCREEN ── -->
       <div class="pm-panel pm-sub pm-hidden" id="pmTabAvatar" role="tabpanel">
@@ -237,33 +253,34 @@
           </div>
 
         </div>
-      </div><!-- /#pmTabAvatar -->
+      </div>
 
     </div><!-- /#pauseMenu -->
 
     <!-- ══════════════════════════════════════════════════
-         CHAT
+         CHAT  — centred above hotbar
          ══════════════════════════════════════════════════ -->
     <div class="chat-panel" id="chatPanel" aria-label="Chat">
       <div class="chat-messages" id="chatMessages"></div>
       <form class="chat-form" id="chatForm" autocomplete="off">
-        <input id="chatInput" class="chat-input" type="text" maxlength="80" placeholder="Press T to chat…" disabled="">
+        <input id="chatInput" class="chat-input" type="text" maxlength="80"
+               placeholder="Press T to chat…" disabled autocomplete="off" spellcheck="false">
         <button class="chat-send" type="submit" aria-label="Send">▶</button>
       </form>
     </div>
 
     <!-- ══════════════════════════════════════════════════
-         WORLD MAP OVERLAY  (toggled with M key)
+         WORLD MAP OVERLAY  (M key)
          ══════════════════════════════════════════════════ -->
     <div id="mapOverlay" class="map-overlay hidden" role="dialog" aria-modal="true" aria-label="World map">
       <div class="map-modal">
         <div class="map-header">
-          <span class="map-title">🗺&nbsp; WORLD MAP</span>
+          <span class="map-title">🗺 WORLD MAP</span>
           <div class="map-zoom-btns">
-            <button id="mapZoomOut" class="map-zoom-btn" title="Zoom out (scroll ↓)" aria-label="Zoom out">−</button>
+            <button id="mapZoomOut" class="map-zoom-btn" title="Zoom out" aria-label="Zoom out">−</button>
             <span id="mapZoomDisplay" class="map-zoom-val">1.0×</span>
-            <button id="mapZoomIn" class="map-zoom-btn" title="Zoom in (scroll ↑)" aria-label="Zoom in">+</button>
-            <button id="mapClose" class="map-close-btn" title="Close map (M / ESC)" aria-label="Close map">✕</button>
+            <button id="mapZoomIn"  class="map-zoom-btn" title="Zoom in"  aria-label="Zoom in">+</button>
+            <button id="mapClose"   class="map-close-btn" title="Close (M / ESC)" aria-label="Close map">✕</button>
           </div>
         </div>
         <canvas id="mapCanvas" class="map-canvas"></canvas>
@@ -274,19 +291,19 @@
          HELD ITEM  (bottom-right, first-person 3D view)
          ══════════════════════════════════════════════════ -->
     <div id="heldItemWrap" class="held-item-wrap" aria-hidden="true">
-      <canvas id="heldItemCanvas" width="280" height="240"></canvas>
+      <canvas id="heldItemCanvas" width="240" height="200"></canvas>
     </div>
 
     <!-- ══════════════════════════════════════════════════
          HOTBAR  (bottom centre — press 1 / 2 to switch)
          ══════════════════════════════════════════════════ -->
     <div class="hotbar" id="hotbar" aria-label="Item hotbar">
-      <div class="hotbar-slot active" id="hotbarSlot1" data-slot="1" title="Shovel [1]">
+      <div class="hotbar-slot active" id="hotbarSlot1" data-slot="1" title="Shovel [1] — Left-click to dig">
         <div class="hotbar-slot-key">1</div>
         <canvas class="hotbar-slot-canvas" id="itemCanvas1" width="44" height="44"></canvas>
         <div class="hotbar-slot-label">Shovel</div>
       </div>
-      <div class="hotbar-slot" id="hotbarSlot2" data-slot="2" title="Item Detector [2]">
+      <div class="hotbar-slot" id="hotbarSlot2" data-slot="2" title="Item Detector [2] — Hold to scan">
         <div class="hotbar-slot-key">2</div>
         <canvas class="hotbar-slot-canvas" id="itemCanvas2" width="44" height="44"></canvas>
         <div class="hotbar-slot-label">Detector</div>
@@ -295,6 +312,9 @@
 
   </div><!-- /#gameWrapper -->
 
+  <!-- ══════════════════════════════════════════════════
+       SCRIPTS
+       ══════════════════════════════════════════════════ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script type="module" src="js/firebase-config.js"></script>
   <script type="module" src="js/network.js"></script>
@@ -305,15 +325,11 @@
   <script type="module" src="js/renderer.js"></script>
   <script type="module" src="js/game.js"></script>
 
-  <!-- ── Hotbar slot switching (1 / 2 keys) ── -->
+  <!-- ── Hotbar slot switching (keys 1 / 2) ── -->
   <script>
     (function () {
-      const SLOTS = {
-        '1': document.getElementById('hotbarSlot1'),
-        '2': document.getElementById('hotbarSlot2'),
-      };
+      const SLOTS   = { '1': document.getElementById('hotbarSlot1'), '2': document.getElementById('hotbarSlot2') };
       const heldWrap = document.getElementById('heldItemWrap');
-
       let activeSlot = '1';
 
       function selectSlot(key) {
@@ -322,17 +338,16 @@
         SLOTS[key].classList.add('active');
         activeSlot = key;
         window.HOTBAR_SLOT = key;
-        // Quick lower-and-raise animation on switch
         if (heldWrap) {
           heldWrap.classList.remove('switching');
-          void heldWrap.offsetWidth; // reflow
+          void heldWrap.offsetWidth;
           heldWrap.classList.add('switching');
         }
       }
 
       window.HOTBAR_SLOT = activeSlot;
 
-      window.addEventListener('keydown', function (e) {
+      window.addEventListener('keydown', e => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         if (e.code === 'Digit1') selectSlot('1');
         if (e.code === 'Digit2') selectSlot('2');
@@ -347,34 +362,29 @@
         if (typeof THREE === 'undefined') return;
 
         const SLOT_W = 44, SLOT_H = 44;
-        const HELD_W = 280, HELD_H = 240;
+        const HELD_W = 240, HELD_H = 200;
 
-        // Single shared off-screen renderer
-        const renderer = new THREE.WebGLRenderer({
-          antialias: true,
-          alpha: true,
-          preserveDrawingBuffer: true,
-        });
-        renderer.setPixelRatio(1); // keep fixed for blit accuracy
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        renderer.setPixelRatio(1);
         renderer.setClearColor(0x000000, 0);
+        renderer.toneMapping        = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
 
-        // ── Shared lights helper ─────────────────────────────
         function addLights(scene) {
           scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-          const d1 = new THREE.DirectionalLight(0x00f5c4, 1.1); // teal key
+          const d1 = new THREE.DirectionalLight(0x00f5c4, 1.1);
           d1.position.set(2, 3, 4);
           scene.add(d1);
-          const d2 = new THREE.DirectionalLight(0x7c6cf7, 0.45); // purple fill
+          const d2 = new THREE.DirectionalLight(0x7c6cf7, 0.45);
           d2.position.set(-2, 1, -2);
           scene.add(d2);
-          const d3 = new THREE.DirectionalLight(0xffffff, 0.3);  // white rim
+          const d3 = new THREE.DirectionalLight(0xffffff, 0.3);
           d3.position.set(0, -2, -3);
           scene.add(d3);
         }
 
         // ════════════════════════════════════════════════════
-        //  SHOVEL  (wood handle + steel blade)
-        //  Palette matches objects.js: trunk=0x8b5e2e, rockGrey=0x707880
+        //  SHOVEL
         // ════════════════════════════════════════════════════
         const shovelScene = new THREE.Scene();
         addLights(shovelScene);
@@ -385,44 +395,38 @@
         const mSteel    = new THREE.MeshLambertMaterial({ color: 0xa8b2bc });
         const mDarkStl  = new THREE.MeshLambertMaterial({ color: 0x707880 });
 
-        // Grip cap
-        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.18), mDarkWood);
+        const grip   = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.18), mDarkWood);
         grip.position.y = 0.84;
         shovelGroup.add(grip);
 
-        // Handle shaft
-        const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.10, 1.0, 0.10), mWood);
+        const shaft  = new THREE.Mesh(new THREE.BoxGeometry(0.10, 1.0, 0.10), mWood);
         shaft.position.y = 0.28;
         shovelGroup.add(shaft);
 
-        // Collar (metal band where handle meets blade)
         const collar = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.13), mDarkStl);
         collar.position.y = -0.22;
         shovelGroup.add(collar);
 
-        // Blade main face
-        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.08, 0.06), mSteel);
+        const blade  = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.08, 0.06), mSteel);
         blade.position.y = -0.35;
         shovelGroup.add(blade);
 
-        // Blade lower taper (3 stacked boxes narrowing to a point)
-        const bMid = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.10, 0.06), mSteel);
+        const bMid   = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.10, 0.06), mSteel);
         bMid.position.y = -0.46;
         shovelGroup.add(bMid);
 
-        const bTip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.06), mSteel);
+        const bTip   = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.06), mSteel);
         bTip.position.y = -0.56;
         shovelGroup.add(bTip);
 
-        // Highlight strip on blade face
-        const bShine = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.30, 0.02), new THREE.MeshLambertMaterial({ color: 0xd8e0e8 }));
+        const bShine = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.30, 0.02),
+          new THREE.MeshLambertMaterial({ color: 0xd8e0e8 }));
         bShine.position.set(-0.14, -0.41, 0.04);
         shovelGroup.add(bShine);
 
         shovelGroup.rotation.z = 0.18;
         shovelScene.add(shovelGroup);
 
-        // Cameras for shovel
         const shovelSlotCam = new THREE.PerspectiveCamera(38, 1, 0.1, 50);
         shovelSlotCam.position.set(0.55, 0.25, 2.1);
         shovelSlotCam.lookAt(0, 0.05, 0);
@@ -432,8 +436,7 @@
         shovelHeldCam.lookAt(-0.05, 0.55, 0);
 
         // ════════════════════════════════════════════════════
-        //  ITEM DETECTOR  (handheld scanner device)
-        //  Body dark navy + teal screen + purple indicator lights
+        //  ITEM DETECTOR
         // ════════════════════════════════════════════════════
         const detScene = new THREE.Scene();
         addLights(detScene);
@@ -446,52 +449,43 @@
         const mTeal   = new THREE.MeshLambertMaterial({ color: 0x00f5c4, emissive: new THREE.Color(0x00f5c4), emissiveIntensity: 1.0 });
         const mPurp   = new THREE.MeshLambertMaterial({ color: 0x7c6cf7, emissive: new THREE.Color(0x7c6cf7), emissiveIntensity: 0.85 });
 
-        // Main body
-        const devBody = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.26, 0.17), mBody);
+        const devBody  = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.26, 0.17), mBody);
         detGroup.add(devBody);
 
-        // Front face panel
-        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.24, 0.02), mPanel);
+        const panel    = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.24, 0.02), mPanel);
         panel.position.set(0, 0, 0.095);
         detGroup.add(panel);
 
-        // Screen (teal glow)
-        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.02), mScreen);
+        const screen   = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.02), mScreen);
         screen.position.set(0, 0.02, 0.11);
         detGroup.add(screen);
 
-        // Scanline effect on screen (darker strip)
-        const scanline = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.015), new THREE.MeshLambertMaterial({ color: 0x003d32 }));
+        const scanline = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.015),
+          new THREE.MeshLambertMaterial({ color: 0x003d32 }));
         scanline.position.set(0, 0.0, 0.115);
         detGroup.add(scanline);
 
-        // 3 indicator lights bottom of face
         [-0.10, 0, 0.10].forEach((x, i) => {
-          const m = i === 1 ? mTeal : mPurp;
-          const dot = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.02), m);
+          const dot = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.02), i === 1 ? mTeal : mPurp);
           dot.position.set(x, -0.085, 0.11);
           detGroup.add(dot);
         });
 
-        // Side grip ridges (left side)
         [-0.05, 0, 0.05].forEach(z => {
           const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.035), mPanel);
           ridge.position.set(-0.21, 0, z);
           detGroup.add(ridge);
         });
 
-        // Antenna base
-        const antBase = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.07), mAnt);
+        const antBase  = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.07), mAnt);
         antBase.position.set(0.12, 0.16, 0.01);
         detGroup.add(antBase);
 
-        // Antenna shaft
         const antShaft = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24, 0.03), mAnt);
         antShaft.position.set(0.12, 0.31, 0.01);
         detGroup.add(antShaft);
 
-        // Antenna tip (teal glow)
-        const antTip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), mTeal);
+        const antTip   = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), mTeal);
         antTip.position.set(0.12, 0.445, 0.01);
         detGroup.add(antTip);
 
@@ -499,7 +493,6 @@
         detGroup.rotation.x = -0.18;
         detScene.add(detGroup);
 
-        // Cameras for detector
         const detSlotCam = new THREE.PerspectiveCamera(38, 1, 0.1, 50);
         detSlotCam.position.set(0.5, 0.3, 1.7);
         detSlotCam.lookAt(0, 0.02, 0);
@@ -518,37 +511,32 @@
         const ctx2 = canvas2.getContext('2d');
         const ctxH = heldCanvas.getContext('2d');
 
-        // Blit renderer domElement → 2D canvas
         function blit(ctx, w, h) {
           ctx.clearRect(0, 0, w, h);
           ctx.drawImage(renderer.domElement, 0, 0, w, h);
         }
 
-        // ── Animation loop ───────────────────────────────────
-        let _scanY = 0; // scanline position for detector screen
+        let _scanY = 0;
+
         function animate(t) {
           requestAnimationFrame(animate);
           const s = t * 0.001;
 
-          // Idle gentle sway
           shovelGroup.rotation.y = Math.sin(s * 0.5) * 0.10;
 
-          // Detector antenna tip pulse & idle rotate
           detGroup.rotation.y = 0.28 + Math.sin(s * 0.45) * 0.10;
-          // Move scanline up/down on screen
           _scanY = Math.sin(s * 1.8) * 0.04;
           scanline.position.y = _scanY;
 
-          // ── Render slot 1 (shovel, 44×44) ──
+          // Slot icons (44×44)
           renderer.setSize(SLOT_W, SLOT_H, false);
           renderer.render(shovelScene, shovelSlotCam);
           blit(ctx1, SLOT_W, SLOT_H);
 
-          // ── Render slot 2 (detector, 44×44) ──
           renderer.render(detScene, detSlotCam);
           blit(ctx2, SLOT_W, SLOT_H);
 
-          // ── Render held item (280×240, first-person camera) ──
+          // Held item view (240×200)
           const slot   = window.HOTBAR_SLOT || '1';
           const hScene = slot === '1' ? shovelScene : detScene;
           const hCam   = slot === '1' ? shovelHeldCam : detHeldCam;
@@ -560,7 +548,6 @@
         requestAnimationFrame(animate);
       }
 
-      // THREE.js loads synchronously above — guard anyway
       if (typeof THREE !== 'undefined') {
         init3DItems();
       } else {
@@ -569,4 +556,5 @@
     })();
   </script>
 
-</body></html>
+</body>
+</html>
