@@ -40,7 +40,7 @@ const ITEM_TYPES = [
 
 // Generate fixed buried-item positions (seeded so they never move)
 function generateBuriedItems() {
-  const rng   = makeRng(0xB0RIED00);
+  const rng   = makeRng(0xB04E1D00); // was 0xB0RIED00 — R and I are not valid hex digits
   const items = [];
   for (let i = 0; i < 45; i++) {
     const x    = (rng() * 2 - 1) * 88;
