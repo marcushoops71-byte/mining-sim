@@ -1,18 +1,5 @@
 // ============================================================
 //  WalkWorld 3D — game.js
-//  Main entry point.
-//  Orchestrates: settings → init → world → network → game loop
-//                → HUD → compass → minimap → chat → cleanup
-//
-//  New HTML elements expected in game.html:
-//    #compassCanvas   — horizontal CoD-style compass strip (top-centre)
-//    #minimapCanvas   — top-down minimap canvas (top-right)
-//    #settingsPanel   — hidden settings overlay
-//    #settingsBtn     — HUD button that opens settings
-//    #sensSlider      — <input type="range"> for mouse sensitivity
-//    #sensValue       — <span> showing current sensitivity value
-//    [data-bind="X"]  — buttons for remapping each action key
-//    #settingsClose   — button inside settings panel to close it
 // ============================================================
 
 import { Player, camera, requestPointerLock, isPointerLocked } from './player.js';
@@ -34,12 +21,10 @@ import {
   saveLocalCharConfig,
   DEFAULT_CHAR_CONFIG,
 } from './character.js';
+import { setupItems, tickItems } from './items.js';
 
 // ============================================================
 //  SETTINGS
-//  Stored in sessionStorage so they persist across page reloads
-//  but are wiped when the browser session ends.
-//  Exposed on window so player.js can read them live.
 // ============================================================
 const DEFAULT_SENS  = 0.0022;
 const DEFAULT_BINDS = {
@@ -53,7 +38,6 @@ const DEFAULT_BINDS = {
   map     : 'KeyM',
 };
 
-// Pretty-print a KeyboardEvent.code string for UI labels
 function prettyCode(code) {
   const MAP = {
     ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
@@ -85,8 +69,6 @@ function saveSettings() {
 // ============================================================
 //  DOM REFS
 // ============================================================
-
-// Overlays
 const loadingOverlay      = document.getElementById('loadingOverlay');
 const loadBar             = document.getElementById('loadBar');
 const loadStatus          = document.getElementById('loadStatus');
@@ -94,29 +76,24 @@ const disconnectedOverlay = document.getElementById('disconnectedOverlay');
 const gameWrapper         = document.getElementById('gameWrapper');
 const gameCanvas          = document.getElementById('gameCanvas');
 
-// HUD
 const hudAvatar  = document.getElementById('hudAvatar');
 const hudName    = document.getElementById('hudName');
 const hudPos     = document.getElementById('hudPos');
 const hudZone    = document.getElementById('hudZone');
 const hudCount   = document.getElementById('hudCount');
 
-// Compass — CoD canvas strip + fallback text label
 const compassCanvas = document.getElementById('compassCanvas');
 const compassCtx    = compassCanvas?.getContext('2d') ?? null;
-const compassDir    = document.getElementById('compassDir'); // existing text span
+const compassDir    = document.getElementById('compassDir');
 
-// Minimap
 const minimapCanvas = document.getElementById('minimapCanvas');
 const minimapCtx    = minimapCanvas?.getContext('2d') ?? null;
 
-// Chat
 const chatMessages = document.getElementById('chatMessages');
 const chatForm     = document.getElementById('chatForm');
 const chatInput    = document.getElementById('chatInput');
 
-// Pause menu
-const pauseMenu  = document.getElementById('pauseMenu');
+const pauseMenu   = document.getElementById('pauseMenu');
 const btnSettings = document.getElementById('btnSettings');
 const btnCharacter = document.getElementById('btnCharacter');
 const sensSlider  = document.getElementById('spSensSlider');
@@ -135,13 +112,17 @@ let isPauseOpen   = false;
 let isMapOpen     = false;
 
 let _lastPosSend = 0;
-const POS_INTERVAL = 100; // ms between Firebase position writes (~10 Hz)
+const POS_INTERVAL = 100;
 
-// ── Map overlay ──────────────────────────────────────────────
+// Chat: track join time so stale Firebase messages are suppressed
+let _chatJoinTime = 0;
+let _initialChatDone = false;
+
+// Map
 const MAP_ZOOM_MIN  = 1;
 const MAP_ZOOM_MAX  = 8;
 let   mapZoom       = 1;
-let   _mapWorldCanvas = null; // cached background (one pixel per world unit)
+let   _mapWorldCanvas = null;
 
 const MAP_ZONE_COLS = {
   Forest: '#1a3a10',
@@ -164,7 +145,6 @@ const MAP_ZONE_LABELS = [
 async function init() {
   loadSettings();
 
-  // Redirect to lobby if the player skipped name entry
   const name   = sessionStorage.getItem('playerName');
   const colour = sessionStorage.getItem('playerColour');
   if (!name) { window.location.href = 'index.html'; return; }
@@ -172,9 +152,7 @@ async function init() {
   setLoad(10, 'Building world…');
   await tick();
 
-  // Build the 3D world (terrain, lighting, fog, water)
   initWorld();
-  // Populate the scene (trees, rocks, cabin, plaza, etc.)
   initObjects();
 
   setLoad(30, 'Spawning player…');
@@ -183,21 +161,19 @@ async function init() {
   player   = new Player(name, colour);
   renderer = new Renderer(gameCanvas);
 
-  // HUD identity chip
+  // Expose player globally so items.js can read it after setup
+  window._wwPlayer = player;
+
   hudAvatar.style.background = colour;
   hudName.textContent        = name;
 
   setLoad(50, 'Connecting to server…');
   await tick();
 
-  // Firebase join
   try {
     await joinGame({
-      name,
-      colour,
-      x:         player.x,
-      y:         player.y,
-      z:         player.z,
+      name, colour,
+      x: player.x, y: player.y, z: player.z,
       rotationY: player.rotationY,
     });
   } catch (err) {
@@ -206,12 +182,14 @@ async function init() {
     return;
   }
 
+  // Record join time AFTER successfully connecting
+  _chatJoinTime = Date.now();
+
   setLoad(70, 'Syncing players…');
   await tick();
 
   onPlayersUpdate(players => {
     remotePlayers = players;
-    // +1 to include the local player in the count
     hudCount.textContent = Object.keys(players).length + 1;
   });
 
@@ -229,30 +207,27 @@ async function init() {
   setupMap();
   initAvatarPreview();
 
+  // ── Items (shovel + detector) ───────────────────────────────
+  setupItems(player, gameCanvas, gameWrapper);
+
   setLoad(100, 'Ready!');
   await delay(300);
 
   loadingOverlay.classList.add('hidden');
   gameWrapper.classList.remove('hidden');
-  // Pointer lock will be acquired on first canvas click (no "click to play" overlay)
 
   lastTime = performance.now();
   rafId    = requestAnimationFrame(gameLoop);
 
-  // Cleanup on page leave / tab close
   window.addEventListener('beforeunload', () => {
     leaveGame(name);
     if (rafId) cancelAnimationFrame(rafId);
   });
 
-  // Pause / resume when tab is hidden / visible
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-      // Open pause menu when tab loses focus (if gameplay is active)
-      if (!isPauseOpen && !isChatOpen && !isMapOpen) {
-        openPauseMenu();
-      }
+      if (!isPauseOpen && !isChatOpen && !isMapOpen) openPauseMenu();
     } else {
       lastTime = performance.now();
       rafId = requestAnimationFrame(gameLoop);
@@ -264,20 +239,20 @@ async function init() {
 //  GAME LOOP
 // ============================================================
 function gameLoop(timestamp) {
-  // Cap dt at 100 ms so a frozen tab doesn't cause a physics explosion
   const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
   lastTime  = timestamp;
 
-  // Only update player physics when gameplay is active
   if (!isChatOpen && !isPauseOpen) {
     player.update(dt);
   }
 
-  // Network: throttled position sync
   if (timestamp - _lastPosSend > POS_INTERVAL) {
     updatePosition(player.x, player.y, player.z, player.rotationY);
     _lastPosSend = timestamp;
   }
+
+  // Tick item mechanics (detector scan etc.)
+  tickItems(timestamp);
 
   updateHUD();
   updateCompass();
@@ -298,14 +273,7 @@ function updateHUD() {
 }
 
 // ============================================================
-//  COD-STYLE COMPASS
-//
-//  Draws a horizontal scrolling strip showing degree marks and
-//  cardinal/intercardinal labels (N NE E SE S SW W NW).
-//  A downward triangle at the centre marks the current heading.
-//
-//  Falls back to updating the existing #compassDir text span
-//  if no #compassCanvas element is present in the DOM.
+//  COMPASS
 // ============================================================
 const CARDINAL = [
   [0, 'N'], [45, 'NE'], [90, 'E'], [135, 'SE'],
@@ -313,10 +281,8 @@ const CARDINAL = [
 ];
 
 function updateCompass() {
-  // Convert yaw (radians, left = positive) → compass bearing (0–360°, clockwise)
   const bearing = (((-player.yaw * 180) / Math.PI) % 360 + 360) % 360;
 
-  // ── Text fallback (existing HUD span) ──
   if (compassDir) {
     const nearest = CARDINAL.reduce((best, cur) =>
       Math.abs(cur[0] - bearing) < Math.abs(best[0] - bearing) ? cur : best
@@ -324,37 +290,28 @@ function updateCompass() {
     compassDir.textContent = `${nearest[1]}  ${Math.round(bearing)}°`;
   }
 
-  // ── Canvas compass strip ──
   if (!compassCtx || !compassCanvas) return;
 
   const W      = compassCanvas.width;
   const H      = compassCanvas.height;
-  const DEG_PX = W / 90; // pixels per degree (90° visible range)
+  const DEG_PX = W / 90;
 
   compassCtx.clearRect(0, 0, W, H);
 
-  // Background
   compassCtx.fillStyle = 'rgba(10,10,22,0.92)';
   compassCtx.fillRect(0, 0, W, H);
 
-  // Accent border along the bottom edge
   compassCtx.fillStyle = 'rgba(0,245,196,0.55)';
   compassCtx.fillRect(0, H - 2, W, 2);
 
-  // ── Minor / mid ticks at every integer offset from centre ──
-  // These give the visual texture of the scrolling strip.
   for (let offset = -90; offset <= 90; offset++) {
-    const sx = Math.round(W / 2 + offset * DEG_PX);
-    // Classify tick by rounding the degree value at this integer offset.
-    // We round bearing so that minor tick spacing stays consistent.
+    const sx  = Math.round(W / 2 + offset * DEG_PX);
     const deg = ((Math.round(bearing) + offset) % 360 + 360) % 360;
     const isMajor = deg % 45 === 0;
     const isMid   = !isMajor && deg % 15 === 0;
     const isMinor = !isMajor && !isMid && deg % 5 === 0;
 
-    if (isMajor) {
-      // Drawn separately below using float positions — skip here
-    } else if (isMid) {
+    if (isMid) {
       compassCtx.fillStyle = 'rgba(255,255,255,0.45)';
       const th = H * 0.30;
       compassCtx.fillRect(sx, (H - th) * 0.45, 1, th);
@@ -365,34 +322,24 @@ function updateCompass() {
     }
   }
 
-  // ── Cardinal / intercardinal labels at their REAL fractional positions ──
-  // By computing offset as a float we avoid the "only shows at 0°" bug where
-  // integer iteration never lands exactly on a non-integer offset.
   compassCtx.font         = 'bold 10px "Courier New", monospace';
   compassCtx.textAlign    = 'center';
   compassCtx.textBaseline = 'bottom';
 
   CARDINAL.forEach(([cardDeg, label]) => {
-    if (cardDeg === 360) return; // skip duplicate N
-    // Float offset of this cardinal from the current bearing
+    if (cardDeg === 360) return;
     let offset = cardDeg - bearing;
-    // Normalise to (−180, +180] so we pick the nearest crossing
     if (offset >  180) offset -= 360;
     if (offset < -180) offset += 360;
-    if (Math.abs(offset) > 90) return; // outside visible window
+    if (Math.abs(offset) > 90) return;
 
     const sx = W / 2 + offset * DEG_PX;
-
-    // Bold bright tick
     compassCtx.fillStyle = 'rgba(0,245,196,1)';
     compassCtx.fillRect(Math.round(sx) - 1, 2, 2, H * 0.55);
-
-    // Label
     compassCtx.fillStyle = '#00f5c4';
     compassCtx.fillText(label, sx, H - 4);
   });
 
-  // Centre marker — downward-pointing triangle at top edge
   compassCtx.fillStyle = '#ffffff';
   compassCtx.beginPath();
   compassCtx.moveTo(W / 2 - 6, 0);
@@ -401,7 +348,6 @@ function updateCompass() {
   compassCtx.closePath();
   compassCtx.fill();
 
-  // Degree readout in the centre notch area
   compassCtx.font      = 'bold 9px "Courier New", monospace';
   compassCtx.fillStyle = 'rgba(255,255,255,0.70)';
   compassCtx.textAlign = 'center';
@@ -411,19 +357,12 @@ function updateCompass() {
 
 // ============================================================
 //  MINIMAP
-//  2D top-down overview using coloured zone rectangles.
-//  The static background is rendered once to an OffscreenCanvas
-//  and composited each frame — player/remote dots drawn on top.
 // ============================================================
 const MINI_COLOURS = {
-  Forest: '#1a3a10',
-  Plains: '#2d6b22',
-  Lake:   '#1a5fa8',
-  Cabin:  '#7a5428',
-  Plaza:  '#606070',
+  Forest: '#1a3a10', Plains: '#2d6b22', Lake: '#1a5fa8',
+  Cabin: '#7a5428', Plaza: '#606070',
 };
 
-// Zone rectangles in world-space (world centre = 0,0, range ±100)
 const MINI_ZONES = [
   { x: -100, z: -100, w: 75,  h: 118, zone: 'Forest' },
   { x: -25,  z: -100, w: 125, h: 200, zone: 'Plains' },
@@ -432,13 +371,13 @@ const MINI_ZONES = [
   { x: -22,  z: -18,  w: 44,  h: 36,  zone: 'Plaza'  },
 ];
 
-let _minimapBg = null; // cached ImageBitmap of the static background
+let _minimapBg = null;
 
 function buildMinimapCache() {
   if (!minimapCtx || !minimapCanvas) return;
 
-  const W    = minimapCanvas.width;
-  const H    = minimapCanvas.height;
+  const W   = minimapCanvas.width;
+  const H   = minimapCanvas.height;
   const WORLD = 200;
   const off   = new OffscreenCanvas(W, H);
   const ctx   = off.getContext('2d');
@@ -446,14 +385,11 @@ function buildMinimapCache() {
   MINI_ZONES.forEach(({ x, z, w, h, zone }) => {
     ctx.fillStyle = MINI_COLOURS[zone];
     ctx.fillRect(
-      ((x + 100) / WORLD) * W,
-      ((z + 100) / WORLD) * H,
-      (w / WORLD) * W,
-      (h / WORLD) * H,
+      ((x + 100) / WORLD) * W, ((z + 100) / WORLD) * H,
+      (w / WORLD) * W,         (h / WORLD) * H,
     );
   });
 
-  // Border
   ctx.strokeStyle = 'rgba(255,255,255,0.22)';
   ctx.lineWidth   = 1;
   ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
@@ -468,16 +404,13 @@ function updateMinimap() {
   const H     = minimapCanvas.height;
   const WORLD = 200;
 
-  // Composite static background
   minimapCtx.drawImage(_minimapBg, 0, 0);
 
-  // World-space → minimap pixel
   const toM = (wx, wz) => ({
     mx: ((wx + 100) / WORLD) * W,
     mz: ((wz + 100) / WORLD) * H,
   });
 
-  // Remote player dots (colour-coded)
   for (const p of Object.values(remotePlayers)) {
     const { mx, mz } = toM(p.x, p.z);
     minimapCtx.fillStyle = p.colour || '#ffffff';
@@ -486,9 +419,7 @@ function updateMinimap() {
     minimapCtx.fill();
   }
 
-  // Local player — white dot with player-colour ring + heading tick
   const { mx: lx, mz: lz } = toM(player.x, player.z);
-
   minimapCtx.fillStyle   = '#ffffff';
   minimapCtx.strokeStyle = player.colour;
   minimapCtx.lineWidth   = 1.5;
@@ -497,8 +428,7 @@ function updateMinimap() {
   minimapCtx.fill();
   minimapCtx.stroke();
 
-  // Heading tick (7 px line in facing direction)
-  const bearing = -player.yaw; // world-space bearing (radians, CW from -Z)
+  const bearing = -player.yaw;
   minimapCtx.strokeStyle = '#ffffff';
   minimapCtx.lineWidth   = 1.5;
   minimapCtx.beginPath();
@@ -508,35 +438,23 @@ function updateMinimap() {
 }
 
 // ============================================================
-//  WORLD MAP  (M key — expandable fullscreen overlay)
-//
-//  _mapWorldCanvas  — 200×200 px canvas, one px per world unit,
-//                     baked once with zone colours.
-//  openMap()        — sizes the overlay canvas, shows the modal
-//  closeMap()       — hides modal, re-acquires pointer lock
-//  drawMap()        — called every frame when map is open;
-//                     draws zones → labels → remote dots → local
-//  setupMap()       — wires up buttons and scroll-wheel zoom
+//  WORLD MAP  (M key)
 // ============================================================
-
 function buildMapWorldCanvas() {
-  const SIZE = 200; // 1 px per world unit (world is ±100 on each axis)
+  const SIZE = 200;
   _mapWorldCanvas = document.createElement('canvas');
   _mapWorldCanvas.width  = SIZE;
   _mapWorldCanvas.height = SIZE;
   const ctx = _mapWorldCanvas.getContext('2d');
 
-  // Sample every 2 world units (100×100 cells, each 2 px)
   for (let iz = 0; iz < SIZE; iz += 2) {
     for (let ix = 0; ix < SIZE; ix += 2) {
-      const wx = ix - 100;
-      const wz = iz - 100;
+      const wx = ix - 100, wz = iz - 100;
       ctx.fillStyle = MAP_ZONE_COLS[getZoneName(wx, wz)] || '#1a3a10';
       ctx.fillRect(ix, iz, 2, 2);
     }
   }
 
-  // World border
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
   ctx.lineWidth   = 1;
   ctx.strokeRect(0.5, 0.5, SIZE - 1, SIZE - 1);
@@ -546,7 +464,6 @@ function openMap() {
   const mapCanvas = document.getElementById('mapCanvas');
   if (!mapCanvas) return;
 
-  // Size the canvas to ~80 % of the smaller screen dimension, max 700 px
   const sz = Math.min(Math.floor(window.innerWidth * 0.78),
                       Math.floor(window.innerHeight * 0.75), 700);
   mapCanvas.width  = sz;
@@ -563,7 +480,6 @@ function openMap() {
 function closeMap() {
   isMapOpen = false;
   document.getElementById('mapOverlay')?.classList.add('hidden');
-  // Re-acquire pointer lock automatically
   requestPointerLock(gameCanvas);
 }
 
@@ -578,23 +494,13 @@ function drawMap() {
   const ctx = mapCanvas.getContext('2d');
   if (!ctx) return;
 
-  const W = mapCanvas.width;
-  const H = mapCanvas.height;
+  const W = mapCanvas.width, H = mapCanvas.height;
+  const WORLD = 200;
 
-  // ── Background ──────────────────────────────────────────
   ctx.fillStyle = '#0a0a16';
   ctx.fillRect(0, 0, W, H);
 
-  // ── World image: scale+pan via drawImage source rect ────
-  //
-  // At zoom=1  → full 200×200 world fits the canvas.
-  //   srcW = srcH = 200,  srcX = srcY = 0
-  // At zoom>1  → we see only (200/zoom) world units.
-  //   We centre on the player.
-  //
-  const WORLD = 200;
   const srcSide = WORLD / mapZoom;
-  // Centre of view in world-canvas pixels (0…200)
   const cx = mapZoom > 1.2 ? (player.x + 100) : WORLD / 2;
   const cz = mapZoom > 1.2 ? (player.z + 100) : WORLD / 2;
   const srcX = Math.max(0, Math.min(WORLD - srcSide, cx - srcSide / 2));
@@ -603,10 +509,9 @@ function drawMap() {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(_mapWorldCanvas, srcX, srcZ, srcSide, srcSide, 0, 0, W, H);
 
-  // ── Grid lines every 25 world units (major zones) ───────
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.lineWidth   = 1;
-  const gridStep  = 25; // world units
+  const gridStep  = 25;
   const scale     = W / srcSide;
   for (let gw = Math.ceil((srcX - srcX % gridStep) / gridStep) * gridStep;
        gw <= srcX + srcSide; gw += gridStep) {
@@ -619,14 +524,11 @@ function drawMap() {
     ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
   }
 
-  // ── Helper: world → canvas px ───────────────────────────
-  // wx/wz in world coords (±100).  srcX/srcZ are in world-canvas px (0…200).
   const toC = (wx, wz) => ({
     cx: ((wx + 100) - srcX) * scale,
     cy: ((wz + 100) - srcZ) * scale,
   });
 
-  // ── Zone labels ──────────────────────────────────────────
   const labelSize = Math.max(8, Math.min(12, 9 * mapZoom * 0.5));
   ctx.font        = `bold ${labelSize}px "Courier New", monospace`;
   ctx.textAlign   = 'center';
@@ -638,7 +540,6 @@ function drawMap() {
     ctx.fillText(name, lx, ly);
   });
 
-  // ── Remote player dots ───────────────────────────────────
   const dotR = Math.max(3, 3.5 * Math.min(mapZoom, 3) * 0.5);
   ctx.textBaseline = 'bottom';
   ctx.font = `${Math.max(10, 11 * mapZoom * 0.4)}px "VT323", monospace`;
@@ -654,17 +555,14 @@ function drawMap() {
     ctx.fillText(p.name || '?', px, py - dotR - 1);
   }
 
-  // ── Local player ─────────────────────────────────────────
   const { cx: lx, cy: ly } = toC(player.x, player.z);
 
-  // Pulse ring
   ctx.strokeStyle = 'rgba(0,245,196,0.40)';
   ctx.lineWidth   = 2;
   ctx.beginPath();
   ctx.arc(lx, ly, 11, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Filled dot
   ctx.fillStyle   = '#ffffff';
   ctx.strokeStyle = '#00f5c4';
   ctx.lineWidth   = 2;
@@ -673,7 +571,6 @@ function drawMap() {
   ctx.fill();
   ctx.stroke();
 
-  // Direction arrow
   const bearing  = -player.yaw;
   const arrowLen = Math.max(14, 14 * Math.min(mapZoom, 3) * 0.5);
   ctx.strokeStyle = '#00f5c4';
@@ -683,14 +580,12 @@ function drawMap() {
   ctx.lineTo(lx + Math.sin(bearing) * arrowLen, ly - Math.cos(bearing) * arrowLen);
   ctx.stroke();
 
-  // Player name
-  ctx.font        = `bold 10px "Courier New", monospace`;
+  ctx.font        = 'bold 10px "Courier New", monospace';
   ctx.fillStyle   = '#00f5c4';
   ctx.textAlign   = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillText(player.name, lx, ly - 13);
 
-  // ── HUD overlay (zoom level, coords, hint) ───────────────
   ctx.textBaseline = 'top';
   ctx.textAlign    = 'left';
   ctx.fillStyle    = 'rgba(0,245,196,0.90)';
@@ -719,7 +614,6 @@ function setupMap() {
     _updateMapZoomUI();
   });
 
-  // Scroll-wheel zoom on the overlay
   document.getElementById('mapOverlay')?.addEventListener('wheel', e => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
@@ -729,18 +623,15 @@ function setupMap() {
     _updateMapZoomUI();
   }, { passive: false });
 }
+
+// ============================================================
+//  POINTER LOCK
+// ============================================================
 function setupPointerLock() {
-  // Clicking the canvas captures the mouse (no "click to play" overlay needed)
   gameCanvas.addEventListener('click', () => {
     if (!isPointerLocked()) requestPointerLock(gameCanvas);
   });
 
-  // pointerlockchange: open the pause menu whenever the browser releases
-  // pointer lock.  Chrome intercepts the FIRST ESC to show its
-  // "press and hold ESC to exit" notification (consuming that keydown),
-  // so the keydown handler alone requires two ESC presses.  Hooking
-  // pointerlockchange means we react the instant the lock drops —
-  // regardless of whether Chrome swallowed the keydown or not.
   document.addEventListener('pointerlockchange', () => {
     if (!isPointerLocked() && !isChatOpen && !isMapOpen && !isPauseOpen) {
       openPauseMenu();
@@ -754,21 +645,24 @@ function setupPointerLock() {
 
 // ============================================================
 //  CHAT
+//  FIX: Removed isPointerLocked() gate so T always opens chat.
+//  FIX: Initial Firebase snapshot (stale messages) are shown
+//       as a short history—new messages arrive in real time.
 // ============================================================
 function setupChat(name, colour) {
   document.addEventListener('keydown', e => {
-    const binds  = window.WALKWORLD_BINDS || DEFAULT_BINDS;
+    const binds   = window.WALKWORLD_BINDS || DEFAULT_BINDS;
     const chatKey = binds.chat;
     const mapKey  = binds.map || 'KeyM';
 
-    // Map toggle — works whenever gameplay is live (not in chat/pause)
     if (e.code === mapKey && !isChatOpen && !isPauseOpen) {
       e.preventDefault();
       isMapOpen ? closeMap() : openMap();
       return;
     }
 
-    if (e.code === chatKey && !isChatOpen && !isPauseOpen && isPointerLocked()) {
+    // FIXED: removed && isPointerLocked() — T opens chat any time
+    if (e.code === chatKey && !isChatOpen && !isPauseOpen) {
       e.preventDefault();
       openChat();
       return;
@@ -779,9 +673,6 @@ function setupChat(name, colour) {
       if (isMapOpen)   { closeMap();       return; }
       if (isChatOpen)  { closeChat();      return; }
       if (isPauseOpen) { closePauseMenu(); return; }
-      // Always open the menu on ESC — whether pointer is locked or not.
-      // (Previously this only opened when !isPointerLocked(), which caused the
-      // menu to not open when Chrome released the lock before the keydown fired.)
       openPauseMenu();
       return;
     }
@@ -809,14 +700,24 @@ function closeChat() {
   isChatOpen = false;
   chatInput.disabled = true;
   chatInput.blur();
-  // Re-acquire pointer lock so user can look around immediately
   requestPointerLock(gameCanvas);
 }
 
 function renderChat(messages) {
   chatMessages.innerHTML = '';
 
-  messages.forEach(m => {
+  // On the very first snapshot from Firebase we may get old messages
+  // from previous sessions. Show only the most recent 6 for context,
+  // then show every new message as it arrives normally.
+  const toShow = _initialChatDone
+    ? messages
+    : messages.slice(-6);
+
+  if (!_initialChatDone) {
+    _initialChatDone = true;
+  }
+
+  toShow.forEach(m => {
     const div = document.createElement('div');
     div.className = 'chat-msg' + (m.system ? ' sys-msg' : '');
 
@@ -833,7 +734,6 @@ function renderChat(messages) {
     textSpan.textContent = m.text;
     div.appendChild(textSpan);
 
-    // Trigger a bubble on the matching remote player
     if (!m.system && m.name) {
       for (const [id, p] of Object.entries(remotePlayers)) {
         if (p.name === m.name) { renderer.addBubble(id, m.text); break; }
@@ -849,11 +749,9 @@ function renderChat(messages) {
 // ============================================================
 //  PAUSE MENU
 // ============================================================
-
 function setupPauseMenu() {
   if (!pauseMenu) return;
 
-  // ── HUD buttons ──────────────────────────────────────────
   btnSettings?.addEventListener('click', () => {
     isPauseOpen ? closePauseMenu() : openPauseMenu('main');
   });
@@ -862,37 +760,28 @@ function setupPauseMenu() {
     openPauseMenu('avatar');
   });
 
-  // ── Nav items (Settings / Avatar) ────────────────────────
   pauseMenu.querySelectorAll('[data-pm-tab]').forEach(btn => {
     btn.addEventListener('click', () => _switchTab(btn.dataset.pmTab));
   });
 
-  // ── Back buttons (return to main screen) ─────────────────
   pauseMenu.querySelectorAll('[data-pm-back]').forEach(btn => {
     btn.addEventListener('click', () => _switchTab(btn.dataset.pmBack));
   });
 
-  // ── Resume ───────────────────────────────────────────────
   document.getElementById('pmResume')?.addEventListener('click', closePauseMenu);
 
-  // ── Leave ────────────────────────────────────────────────
   document.getElementById('pmLeave')?.addEventListener('click', () => {
     window.location.href = 'index.html';
   });
 
-  // ── Reset Character ──────────────────────────────────────
   document.getElementById('pmResetChar')?.addEventListener('click', () => {
     if (player) {
-      player.x = 0;
-      player.y = 2.0;
-      player.z = 5;
-      player.vy = 0;
-      player.onGround = false;
+      player.x = 0; player.y = 2.0; player.z = 5;
+      player.vy = 0; player.onGround = false;
     }
     closePauseMenu();
   });
 
-  // ── Sensitivity slider ───────────────────────────────────
   if (sensSlider) {
     sensSlider.value = String(window.WALKWORLD_SENS);
     if (sensValueEl) sensValueEl.textContent = Number(window.WALKWORLD_SENS).toFixed(4);
@@ -904,7 +793,6 @@ function setupPauseMenu() {
     });
   }
 
-  // ── Key bind buttons ─────────────────────────────────────
   document.querySelectorAll('[data-bind]').forEach(btn => {
     const action = btn.dataset.bind;
     btn.textContent = prettyCode((window.WALKWORLD_BINDS || {})[action] || action);
@@ -935,13 +823,12 @@ function setupPauseMenu() {
     });
   });
 
-  // ── Reset defaults ───────────────────────────────────────
   document.getElementById('spReset')?.addEventListener('click', () => {
     window.WALKWORLD_SENS  = DEFAULT_SENS;
     window.WALKWORLD_BINDS = { ...DEFAULT_BINDS };
     saveSettings();
-    if (sensSlider)   sensSlider.value = String(DEFAULT_SENS);
-    if (sensValueEl)  sensValueEl.textContent = DEFAULT_SENS.toFixed(4);
+    if (sensSlider)  sensSlider.value = String(DEFAULT_SENS);
+    if (sensValueEl) sensValueEl.textContent = DEFAULT_SENS.toFixed(4);
     document.querySelectorAll('[data-bind]').forEach(b => {
       b.textContent = prettyCode(DEFAULT_BINDS[b.dataset.bind]);
     });
@@ -949,16 +836,14 @@ function setupPauseMenu() {
 }
 
 function _switchTab(tabName) {
-  const pmMain         = document.getElementById('pmMain');
-  const pmTabSettings  = document.getElementById('pmTabSettings');
-  const pmTabAvatar    = document.getElementById('pmTabAvatar');
+  const pmMain        = document.getElementById('pmMain');
+  const pmTabSettings = document.getElementById('pmTabSettings');
+  const pmTabAvatar   = document.getElementById('pmTabAvatar');
 
-  // Show/hide panels based on which tab is active
   pmMain?.classList.toggle('pm-hidden', tabName !== 'main');
   pmTabSettings?.classList.toggle('pm-hidden', tabName !== 'settings');
   pmTabAvatar?.classList.toggle('pm-hidden', tabName !== 'avatar');
 
-  // Kick off avatar preview spin when avatar tab opens
   if (tabName === 'avatar') _tickAvatarPreview();
 }
 
@@ -976,10 +861,6 @@ function closePauseMenu() {
   isPauseOpen = false;
   pauseMenu?.classList.add('hidden');
   btnSettings?.classList.remove('active');
-  // Re-acquire pointer lock automatically.
-  // We use a short timeout because browsers block requestPointerLock()
-  // when it's called in the same event tick that ESC released the lock.
-  // Giving the browser one frame to clear that block makes it reliable.
   gameCanvas.focus();
   setTimeout(() => {
     if (!isPauseOpen && !isChatOpen && !isMapOpen) {
@@ -989,7 +870,7 @@ function closePauseMenu() {
 }
 
 // ============================================================
-//  AVATAR PREVIEW (inside pause menu Avatar tab)
+//  AVATAR PREVIEW
 // ============================================================
 const SKIN_PRESETS  = ['#f0c890','#d4956a','#a0643a','#7a3f20','#4a2010','#ffe0d0'];
 const SHIRT_PRESETS = ['#1e90ff','#e03030','#2ed573','#ffa502','#a29bfe','#fd79a8','#ffffff','#333355'];
@@ -1022,14 +903,12 @@ function initAvatarPreview() {
   _avPrevCam.position.set(0, 1.0, 3.5);
   _avPrevCam.lookAt(0, 1.0, 0);
 
-  // Build swatch grids + hair buttons
   _buildSwatches('pmSwatchSkin',  SKIN_PRESETS,  'skinColour');
   _buildSwatches('pmSwatchShirt', SHIRT_PRESETS, 'shirtColour');
   _buildSwatches('pmSwatchPants', PANTS_PRESETS, 'pantsColour');
   _buildSwatches('pmSwatchHair',  HAIR_PRESETS,  'hairColour');
   _buildHairBtns();
 
-  // Height slider
   const hSlider = document.getElementById('pmHeightSlider');
   const hVal    = document.getElementById('pmHeightVal');
   if (hSlider) {
@@ -1045,7 +924,6 @@ function initAvatarPreview() {
     });
   }
 
-  // Avatar reset
   document.getElementById('pmAvatarReset')?.addEventListener('click', () => {
     saveLocalCharConfig({ ...DEFAULT_CHAR_CONFIG });
     _syncAvSwatches();
