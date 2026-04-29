@@ -29,19 +29,29 @@ const firebaseConfig = {
  
 let app = null;
 let db  = null;
+
+// Set this to true to skip Firebase entirely and play offline.
+// Useful if you're stuck on the loading screen.
+const FORCE_OFFLINE = false;
  
 // Guard: won't crash if config hasn't been filled in yet
-const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+const _hasConfig = firebaseConfig.apiKey !== "YOUR_API_KEY";
+const isConfigured = _hasConfig && !FORCE_OFFLINE;
  
 if (isConfigured) {
-  app = initializeApp(firebaseConfig);
-  db  = getDatabase(app);
-} else {
+  try {
+    app = initializeApp(firebaseConfig);
+    db  = getDatabase(app);
+  } catch (e) {
+    console.warn("[WalkWorld] Firebase init failed — offline mode:", e.message);
+  }
+} else if (!_hasConfig) {
   console.warn(
     "[WalkWorld] Firebase not configured!\n" +
     "Open js/firebase-config.js and paste your Firebase project config."
   );
+} else {
+  console.info("[WalkWorld] FORCE_OFFLINE = true — running without Firebase.");
 }
  
 export { app, db, isConfigured };
- 
