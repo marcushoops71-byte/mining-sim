@@ -24,23 +24,41 @@ export async function joinGame(playerData) {
     return 'offline-' + Math.random().toString(36).slice(2);
   }
 
-  _playerRef = push(PATHS.players());
-  _playerId  = _playerRef.key;
+  try {
+    _playerRef = push(PATHS.players());
+    _playerId  = _playerRef.key;
 
-  await set(_playerRef, {
-    name:      playerData.name,
-    colour:    playerData.colour,
-    x:         playerData.x         ?? 0,
-    y:         playerData.y         ?? 0,
-    z:         playerData.z         ?? 0,
-    rotationY: playerData.rotationY ?? 0,
-    joinedAt:  serverTimestamp(),
-  });
+    // Race the Firebase write against a 6-second timeout so we never
+    // hang indefinitely if the DB rules have expired or the network is flaky.
+    const writeTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Firebase write timed out after 6 s')), 6000)
+    );
 
-  onDisconnect(_playerRef).remove();
-  _pushSystemChat(`${playerData.name} joined the world`);
+    await Promise.race([
+      set(_playerRef, {
+        name:      playerData.name,
+        colour:    playerData.colour,
+        x:         playerData.x         ?? 0,
+        y:         playerData.y         ?? 0,
+        z:         playerData.z         ?? 0,
+        rotationY: playerData.rotationY ?? 0,
+        joinedAt:  serverTimestamp(),
+      }),
+      writeTimeout,
+    ]);
 
-  return _playerId;
+    onDisconnect(_playerRef).remove();
+    _pushSystemChat(`${playerData.name} joined the world`);
+    return _playerId;
+
+  } catch (err) {
+    // Firebase is unreachable, rules expired, or timed out.
+    // Fall back to a local-only session so the game still loads.
+    console.warn('[Network] Firebase unavailable — offline mode:', err.message);
+    _playerRef = null;
+    _playerId  = 'offline-' + Math.random().toString(36).slice(2);
+    return _playerId;
+  }
 }
 
 export async function leaveGame(playerName) {
