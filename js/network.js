@@ -28,10 +28,10 @@ export async function joinGame(playerData) {
     _playerRef = push(PATHS.players());
     _playerId  = _playerRef.key;
 
-    // Race the Firebase write against a 6-second timeout so we never
+    // Race the Firebase write against a 3-second timeout so we never
     // hang indefinitely if the DB rules have expired or the network is flaky.
     const writeTimeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Firebase write timed out after 6 s')), 6000)
+      setTimeout(() => reject(new Error('Firebase write timed out after 3 s')), 3000)
     );
 
     await Promise.race([
